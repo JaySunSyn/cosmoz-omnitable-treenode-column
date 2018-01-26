@@ -27,14 +27,14 @@ cosmoz-omnitable column to display a tree node
 		<template class="header">
 			<paper-autocomplete
 				text="{{ query }}"
-				source="[[ _computeSuggestionList(values, _collator, ownerTree) ]]"
+				source="[[ _suggestionList ]]"
 				query-fn="[[ queryFn ]]"
 				label="[[ title ]]"
 				value="{{ filter }}"
 				min-length="0"
 				title="[[ _tooltip ]]"
-				show-results-on-focus
-				readonly="[[ _computeReadOnly(filter) ]]">
+				show-results-on-focus="[[ _showResultsOnFocus ]]"
+				readonly="[[ _readonly ]]">
 				<paper-spinner-lite style="width: 20px; height: 20px;" suffix slot="suffix" active="[[ loading ]]" hidden="[[ !loading ]]"></paper-spinner-lite>
 
 				<template slot="autocomplete-custom-template">
@@ -66,11 +66,6 @@ cosmoz-omnitable column to display a tree node
 				readOnly: true,
 				value: true
 			},
-
-			// cellClass: {
-			// 	type: String,
-			// 	value: 'align-left rtl'
-			// },
 
 			filter: {
 				type: String,
@@ -106,33 +101,6 @@ cosmoz-omnitable column to display a tree node
 				type: String,
 				value: 'name'
 			},
-
-			_collator: {
-				type: Object,
-				computed: '_computeCollator(locale)'
-			},
-
-			_hideFromRoot: {
-				type: Number,
-				value: 0,
-				computed: '_computeHideFromRoot(showCommonPath, values, ownerTree)'
-			},
-
-			_tooltip: {
-				type: String,
-				computed: '_computeTooltip(filter)'
-			},
-	
-			minWidth: {
-				type: String,
-				value: '85px'
-			},
-
-			editMinWidth: {
-				type: String,
-				value: '85px'
-			},
-
 			/**
 			 * Function used to filter available items.
 			 * This function is actually used by `paper-autocomplete`,
@@ -140,7 +108,7 @@ cosmoz-omnitable column to display a tree node
 			 */
 			queryFn: {
 				type: Function,
-				value: function () {
+				value() {
 					return function (datasource, query) {
 						const notNull = i => i != null;
 						return datasource.filter(notNull)
@@ -182,6 +150,38 @@ cosmoz-omnitable column to display a tree node
 							}).filter(notNull);
 					};
 				}
+			},
+
+			_collator: {
+				type: Object,
+				computed: '_computeCollator(locale)'
+			},
+
+			_hideFromRoot: {
+				type: Number,
+				value: 0,
+				computed: '_computeHideFromRoot(showCommonPath, values, ownerTree)'
+			},
+
+			_tooltip: {
+				type: String,
+				computed: '_computeTooltip(filter)'
+			},
+	
+			_showResultsOnFocus: {
+				type: Boolean,
+				value: true,
+				computed: '_computeShowResultsOnFocus(filter)'
+			},
+
+			_suggestionList: {
+				type: Array,
+				computed: '_computeSuggestionList(values, _collator, ownerTree)'
+			},
+
+			_readonly: {
+				type: Boolean,
+				computed: '_computeReadOnly(filter)'
 			}
 		},
 
@@ -218,56 +218,7 @@ cosmoz-omnitable column to display a tree node
 			return ownerTree.getPathStringByProperty(filter, this.keyProperty, this.valueProperty, ' / ');
 		},
 
-		getComparableValue: function (item, valuePath) {
-			if (!item || !this.ownerTree) {
-				return;
-			}
-
-			return this.ownerTree.getPathStringByProperty(this.get(valuePath, item), this.keyProperty, this.valueProperty, ' / ');
-		},
-
-		// Implement filtering using treenode-navigator
-		getFilterFn: function () {
-			if (!this.filter) {
-				return;
-			}
-			return this._applySingleFilter.bind(this, this.filter);
-		},
-
-		getString: function (item, valuePath) {
-			return this.getComparableValue(item, valuePath || this.valuePath);
-		},
-
-		_applySingleFilter: function (filter, item) {
-			return filter === this.get(this.valuePath, item);
-		},
-
-		// HACK(pasleq): Cosmoz.Tree API needs to be fixed to avoid such code in components
-		getPathByProperty: function (propertyName, propertyValue, ownerTree = this.ownerTree) {
-			if (!ownerTree) {
-				return [];
-			}
-
-			if (propertyName === 'pathLocator') {
-				return ownerTree.getPathNodes(propertyValue);
-			}
-
-			const node = ownerTree.getNodeByProperty(propertyValue, propertyName);
-			if (node && node.pathLocator) {
-				return ownerTree.getPathNodes(node.pathLocator);
-			}
-
-			return [];
-		},
-
-		toXlsxValue: function (item, valuePath = this.valuePath) {
-			if (!valuePath) {
-				return '';
-			}
-			return this.getString(item, valuePath);
-		},
-
-		_computeHideFromRoot: function (showCommonPath, values, ownerTree) {
+		_computeHideFromRoot(showCommonPath, values, ownerTree) {
 			if (showCommonPath || !values || !Array.isArray(values) || values.length === 0) {
 				return 0;
 			}
@@ -302,9 +253,62 @@ cosmoz-omnitable column to display a tree node
 			return filter || null;
 		},
 
-		_deserializeFilter: function (obj) {
+		_deserializeFilter(obj) {
 			return obj || null;
 		},
+
+		_applySingleFilter(filter, item) {
+			return filter === this.get(this.valuePath, item);
+		},
+
+		/****************************
+         * PUBLIC
+         ****************************/
+
+		getComparableValue(item, valuePath) {
+			if (!item || !this.ownerTree) {
+				return;
+			}
+
+			return this.ownerTree.getPathStringByProperty(this.get(valuePath, item), this.keyProperty, this.valueProperty, ' / ');
+		},
+
+		// Implement filtering using treenode-navigator
+		getFilterFn() {
+			if (!this.filter) {
+				return;
+			}
+			return this._applySingleFilter.bind(this, this.filter);
+		},
+
+		getString(item, valuePath) {
+			return this.getComparableValue(item, valuePath || this.valuePath);
+		},
+
+		// HACK(pasleq): Cosmoz.Tree API needs to be fixed to avoid such code in components
+		getPathByProperty(propertyName, propertyValue, ownerTree = this.ownerTree) {
+			if (!ownerTree) {
+				return [];
+			}
+
+			if (propertyName === 'pathLocator') {
+				return ownerTree.getPathNodes(propertyValue);
+			}
+
+			const node = ownerTree.getNodeByProperty(propertyValue, propertyName);
+			if (node && node.pathLocator) {
+				return ownerTree.getPathNodes(node.pathLocator);
+			}
+
+			return [];
+		},
+
+		toXlsxValue(item, valuePath = this.valuePath) {
+			if (!valuePath) {
+				return '';
+			}
+			return this.getString(item, valuePath);
+		}
 	});
   </script>
 </dom-module>
